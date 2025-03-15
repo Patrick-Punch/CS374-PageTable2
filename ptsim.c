@@ -62,7 +62,7 @@ void new_process(int proc_num, int page_count)
         }
     }
     if (page_table_page == -1){
-        fprintf(stderr, "Error: No memory available\n");
+        fprintf(stderr, "No memory available\n");
         return;
     }
     // Store the page table page number in the zero page
@@ -81,11 +81,51 @@ void new_process(int proc_num, int page_count)
             }
         }
         if (data_page == -1){
-            fprintf(stderr, "Error: No pages available\n");
+            fprintf(stderr, "No pages available\n");
             return;
         }
         int page_table_addr = get_address(page_table_page, i); // Compute addr in page table
         mem[page_table_addr] = data_page; // Store the page number in the page table
+    }
+}
+
+//
+// Add 'p' pages to the process 'n'
+//
+void add_pages(int proc_num, int p)
+{
+    int page_table_page = get_page_table(proc_num);
+    int first_free_entry = -1;
+    for (int i = 0; i < PAGE_COUNT; i++){
+        int addr = get_address(page_table_page, i);
+        if (mem[addr] == 0){
+            first_free_entry = i;
+            break;
+        }
+    }
+
+    if (first_free_entry == -1){
+        fprintf(stderr, "Page table full for process %d\n", proc_num);
+        return;
+    }
+    int num_allocated = 0;
+    for (int i = 0; i < p; i++){ // Allocate 'p' pages for the process
+        int data_page = -1;
+        for (int j = 1; j < PAGE_COUNT; j++){
+            if (mem[j] == 0){ // Find a free page
+                data_page = j;
+                mem[j] = 1;
+                break;
+            }
+        }
+
+        if (data_page == -1){
+            fprintf(stderr, "No physical memory available\n");
+            return;
+        }
+        int page_table_addr = get_address(page_table_page, first_free_entry + i);
+        mem[page_table_addr] = data_page; // Add the new physical page to the page table entry
+        num_allocated++;
     }
 }
 
@@ -114,7 +154,11 @@ int get_physical_page(int proc_num, int vaddr)
     int virtual_page = vaddr >> PAGE_SHIFT;
     int page_table_page = get_page_table(proc_num);
     int addr = get_address(page_table_page, virtual_page); // Get the physical address from the page table
-    return mem[addr];
+    int physical_page = mem[addr];
+    if (physical_page == 0){ // Check for page fault
+        printf("PAGE FAULT: proc %d, vaddr %d\n", proc_num, vaddr);
+    }
+    return physical_page;
 }
 //
 // Store a value at a virtual address
@@ -128,9 +172,6 @@ void store_value(int proc_num, int vaddr, int val)
         int phys_addr = get_address(physical_page, offset);
         mem[phys_addr] = val; // Calculate the physical address
         printf("Store proc %d: %d => %d, value=%d\n", proc_num, vaddr, phys_addr, val);
-    }
-    else {
-        fprintf(stderr, "Invalid virtual address %d\n", vaddr);
     }
 }
 
@@ -147,9 +188,6 @@ void load_value(int proc_num, int vaddr)
         int phys_addr = get_address(physical_page, offset);
         int val = mem[phys_addr];
         printf("Load proc %d: %d => %d, value=%d\n", proc_num, vaddr, phys_addr, val);
-    }
-    else {
-        fprintf(stderr, "Invalid virtual address %d\n", vaddr);
     }
 }
 
@@ -237,6 +275,11 @@ int main(int argc, char *argv[])
             int proc_num = atoi(argv[++i]);
             int vaddr = atoi(argv[++i]);
             load_value(proc_num, vaddr);
+        }
+        else if (strcmp(argv[i], "ap") == 0){
+            int proc_num = atoi(argv[++i]);
+            int num_pages = atoi(argv[++i]);
+            add_pages(proc_num, num_pages);
         }
     }
 }
